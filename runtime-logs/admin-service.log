@@ -1,0 +1,6 @@
+
+> admin-service@1.0.0 start
+> node src/index.js
+
+admin-service running on 4005
+Admin-service connected to MongoDB

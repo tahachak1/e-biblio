@@ -1,0 +1,10 @@
+
+> Library Website Login Page@0.1.0 dev
+> vite
+
+
+  VITE v6.3.5  ready in 268 ms
+
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: use --host to expose
+8:39:46 PM [vite] (client) hmr update /src/pages/AdminDashboard.tsx

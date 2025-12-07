@@ -1,0 +1,6 @@
+
+> auth-login-service@1.0.0 start
+> node src/index.js
+
+auth-login-service running on 4001
+Auth-login connected to MongoDB

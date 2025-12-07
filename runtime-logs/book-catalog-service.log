@@ -1,0 +1,80 @@
+INFO:     Started server process [60221]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8002 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55543 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55544 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55661 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55673 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55991 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56125 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56141 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56141 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56153 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56253 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56267 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56267 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56272 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56275 - "GET /books/692871b09bcf03ce0ba17d8e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56275 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56279 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56283 - "GET /books?page=1&limit=8&categorieId=692871b09bcf03ce0ba17d7c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56333 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56352 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56354 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56368 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56576 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56576 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56582 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59204 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61178 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61434 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61436 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50177 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50179 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53341 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53342 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53811 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53814 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53836 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53854 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53854 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53883 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53891 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53892 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53892 - "GET /books/69278ba79bcf03ce0ba087c4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53892 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53894 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53911 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53912 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53940 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53975 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54120 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54134 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54156 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54156 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54200 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54221 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54252 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54262 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54262 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54273 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54277 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54291 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54291 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54291 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54304 - "GET /books?page=1&limit=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54306 - "GET /books/categories HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55212 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55670 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57926 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58079 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58365 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58529 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58579 - "GET /books HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58792 - "GET /books HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [60221]
