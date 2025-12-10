@@ -171,6 +171,8 @@ router.post('/orders', authRequired, (req, res) => proxyRequest(req, res, `${ORD
 router.get('/orders', authRequired, (req, res) => proxyRequest(req, res, `${ORDER_SERVICE_URL}/orders`));
 router.get('/orders/summary', authRequired, (req, res) => proxyRequest(req, res, `${ORDER_SERVICE_URL}/orders/summary`));
 router.get('/orders/admin-summary', authRequired, adminRequired, (req, res) => proxyRequest(req, res, `${ORDER_SERVICE_URL}/orders/admin-summary`));
+router.get('/orders/:id/invoice', authRequired, (req, res) => proxyRequest(req, res, `${ORDER_SERVICE_URL}/orders/${req.params.id}/invoice`));
+router.get('/orders/:id', authRequired, (req, res) => proxyRequest(req, res, `${ORDER_SERVICE_URL}/orders/${req.params.id}`));
 
 // Chatbot
 router.post('/chatbot', (req, res) => proxyRequest(req, res, `${CHATBOT_SERVICE_URL}/chat`));
@@ -185,6 +187,7 @@ router.delete('/admin/users/:id', authRequired, adminRequired, (req, res) => pro
 
 router.get('/admin/orders', authRequired, adminRequired, (req, res) => proxyRequest(req, res, `${ADMIN_SERVICE_URL}/admin/orders`));
 router.patch('/admin/orders/:id/status', authRequired, adminRequired, (req, res) => proxyRequest(req, res, `${ADMIN_SERVICE_URL}/admin/orders/${req.params.id}/status`));
+router.post('/admin/notifications', authRequired, adminRequired, (req, res) => proxyRequest(req, res, `${ADMIN_SERVICE_URL}/admin/notifications`));
 
 router.get('/categories', authRequired, adminRequired, (req, res) => proxyRequest(req, res, `${ADMIN_SERVICE_URL}/categories`));
 router.post('/categories', authRequired, adminRequired, (req, res) => proxyRequest(req, res, `${ADMIN_SERVICE_URL}/categories`));

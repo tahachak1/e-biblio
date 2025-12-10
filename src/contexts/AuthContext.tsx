@@ -41,17 +41,30 @@ const normalizeUser = (payload: any): User | null => {
   };
 };
 
+const getUserFromStorage = (): User | null => {
+  try {
+    const savedUser = localStorage.getItem('user');
+    if (!savedUser) return null;
+    return normalizeUser(JSON.parse(savedUser));
+  } catch (err) {
+    console.error('Failed to parse user from storage', err);
+    return null;
+  }
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const initialUser = getUserFromStorage();
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(token && initialUser));
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    if (token && savedUser) {
-      const parsedUser = normalizeUser(JSON.parse(savedUser));
-      if (parsedUser) {
-        setUser(parsedUser);
+    // Réhydrate si l'état est vide mais que le storage contient encore un token/user
+    if (!user) {
+      const storedUser = getUserFromStorage();
+      const storedToken = localStorage.getItem('token');
+      if (storedUser && storedToken) {
+        setUser(storedUser);
         setIsAuthenticated(true);
       }
     }

@@ -25,6 +25,7 @@ export const Checkout: React.FC = () => {
   const [stripeLoading, setStripeLoading] = useState(false);
   const [stripeError, setStripeError] = useState<string>('');
   const [paying, setPaying] = useState(false);
+  const [useSavedAddress, setUseSavedAddress] = useState<boolean>(!!user?.address);
   const paymentActionRef = useRef<() => Promise<boolean>>(async () => false);
   const registerPaymentAction = useCallback((fn: () => Promise<boolean>) => {
     paymentActionRef.current = fn;
@@ -42,6 +43,28 @@ export const Checkout: React.FC = () => {
     cardExpiry: '',
     cardCVV: '',
   });
+
+  // Préremplir avec les infos du profil quand dispo
+  useEffect(() => {
+    if (!user) return;
+    const derivedName =
+      user.name ||
+      [user.firstName || user.prenom || '', user.lastName || user.nom || ''].join(' ').trim();
+
+    setFormData((prev) => ({
+      ...prev,
+      name: prev.name || derivedName || '',
+      email: prev.email || user.email || '',
+      ...(useSavedAddress && user.address
+        ? {
+            address: user.address.rue || '',
+            city: user.address.ville || '',
+            postalCode: user.address.codePostal || '',
+            country: user.address.pays || 'France',
+          }
+        : {}),
+    }));
+  }, [user, useSavedAddress]);
 
   const shippingCost = totalPrice >= 25 ? 0 : 4.99;
   const total = totalPrice + shippingCost;
@@ -110,6 +133,7 @@ export const Checkout: React.FC = () => {
           bookId: item.id.split('-')[0],
           quantity: item.quantity || 1,
           type: item.type,
+          rentalDurationDays: item.type === 'rent' ? item.rentalDuration || 7 : undefined,
         })),
         shippingAddress: {
           name: formData.name,
@@ -238,6 +262,20 @@ export const Checkout: React.FC = () => {
                   </h2>
                 </div>
 
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    id="useSavedAddress"
+                    type="checkbox"
+                    checked={useSavedAddress}
+                    onChange={(e) => setUseSavedAddress(e.target.checked)}
+                    className="h-4 w-4"
+                    disabled={!user?.address}
+                  />
+                  <Label htmlFor="useSavedAddress" className="text-sm text-gray-700">
+                    Utiliser mon adresse enregistrée{!user?.address ? ' (aucune adresse enregistrée)' : ''}
+                  </Label>
+                </div>
+
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="address">Adresse</Label>
@@ -246,6 +284,7 @@ export const Checkout: React.FC = () => {
                       name="address"
                       value={formData.address}
                       onChange={handleChange}
+                      disabled={useSavedAddress}
                       required
                     />
                   </div>
@@ -257,6 +296,7 @@ export const Checkout: React.FC = () => {
                         name="city"
                         value={formData.city}
                         onChange={handleChange}
+                        disabled={useSavedAddress}
                         required
                       />
                     </div>
@@ -267,6 +307,7 @@ export const Checkout: React.FC = () => {
                         name="postalCode"
                         value={formData.postalCode}
                         onChange={handleChange}
+                        disabled={useSavedAddress}
                         required
                       />
                     </div>
@@ -278,6 +319,7 @@ export const Checkout: React.FC = () => {
                       name="country"
                       value={formData.country}
                       onChange={handleChange}
+                      disabled={useSavedAddress}
                       required
                     />
                   </div>
@@ -329,13 +371,20 @@ export const Checkout: React.FC = () => {
 
                 <div className="space-y-3 mb-6">
                   {cart.map((item) => (
-                    <div key={item.id} className="flex justify-between text-sm">
-                      <span style={{ color: '#374151' }}>
-                        {item.title} x{item.quantity}
-                      </span>
-                      <span style={{ color: '#374151' }}>
-                        {formatCurrency(item.price * item.quantity)}
-                      </span>
+                    <div key={item.id} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span style={{ color: '#374151' }}>
+                          {item.title} x{item.quantity}
+                        </span>
+                        <span style={{ color: '#374151' }}>
+                          {formatCurrency(item.price * item.quantity)}
+                        </span>
+                      </div>
+                      {item.type === 'rent' && (
+                        <p className="text-xs" style={{ color: '#6b7280' }}>
+                          Location · {(item.rentalDuration || 7)} jours
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>

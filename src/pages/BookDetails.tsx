@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button';
 import { useCart } from '../contexts/CartContext';
 import api from '../services/api';
 import { toast } from 'sonner';
+import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
 interface Book {
   _id: string;
@@ -54,12 +55,15 @@ export const BookDetails: React.FC = () => {
 
   const handleAddToCart = (type: 'purchase' | 'rent') => {
     if (!book) return;
+    const rentBase = book.rentPrice ?? book.price;
     
     addToCart({
       id: `${book._id}-${type}`,
       title: book.title,
       author: book.author,
-      price: type === 'rent' && book.rentPrice ? book.rentPrice : book.price,
+      price: type === 'rent' ? rentBase : book.price,
+      rentPrice: type === 'rent' ? rentBase : undefined,
+      rentalDuration: type === 'rent' ? 7 : undefined,
       image: book.image,
       type,
     });
@@ -101,7 +105,7 @@ export const BookDetails: React.FC = () => {
             {/* Image */}
             <div>
               <div className="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100">
-                <img
+                <ImageWithFallback
                   src={book.image}
                   alt={book.title}
                   className="w-full h-full object-cover"

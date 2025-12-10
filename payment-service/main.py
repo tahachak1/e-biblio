@@ -40,10 +40,16 @@ app.add_middleware(
 )
 
 class PaymentMethodPayload(BaseModel):
-  cardNumber: str
-  cardName: str
-  cardExpiry: str
   type: str | None = 'carte'
+  cardNumber: str | None = None
+  cardName: str | None = None
+  cardholderName: str | None = None
+  cardExpiry: str | None = None
+  expiryMonth: str | None = None
+  expiryYear: str | None = None
+  cvv: str | None = None
+  brand: str | None = None
+  email: str | None = None
 
 class PaymentIntentPayload(BaseModel):
   amount: float
@@ -122,22 +128,45 @@ async def list_methods(request: Request):
 @app.post('/payment-methods')
 async def create_method(payload: PaymentMethodPayload, request: Request):
   user_id = get_user_id(request)
-  digits = ''.join(ch for ch in payload.cardNumber if ch.isdigit())
-  if len(digits) < 4:
-    raise HTTPException(status_code=400, detail='Numéro de carte invalide')
-  last4 = digits[-4:]
-  brand = detect_brand(digits)
-  doc = {
-    'userId': user_id,
-    'type': payload.type or 'carte',
-    'brand': brand,
-    'last4': last4,
-    'cardholderName': payload.cardName,
-    'expiresAt': payload.cardExpiry,
-    'isDefault': False,
-    'status': 'valid',
-    'createdAt': datetime.utcnow()
-  }
+  method_type = (payload.type or 'carte').lower()
+
+  if method_type == 'paypal':
+    if not payload.email:
+      raise HTTPException(status_code=400, detail='Email PayPal requis')
+    doc = {
+      'userId': user_id,
+      'type': 'paypal',
+      'email': payload.email,
+      'isDefault': False,
+      'status': 'valid',
+      'createdAt': datetime.utcnow()
+    }
+  else:
+    digits = ''.join(ch for ch in (payload.cardNumber or '') if ch.isdigit())
+    if len(digits) < 4:
+      raise HTTPException(status_code=400, detail='Numéro de carte invalide')
+    last4 = digits[-4:]
+    brand = payload.brand or detect_brand(digits)
+    cardholder = payload.cardholderName or payload.cardName
+    if not cardholder:
+      raise HTTPException(status_code=400, detail='Nom sur la carte requis')
+    expiry = payload.cardExpiry
+    if not expiry and payload.expiryMonth and payload.expiryYear:
+      expiry = f"{payload.expiryMonth}/{payload.expiryYear}"
+    if not expiry:
+      raise HTTPException(status_code=400, detail='Date d’expiration requise')
+    doc = {
+      'userId': user_id,
+      'type': 'carte',
+      'brand': brand,
+      'last4': last4,
+      'cardholderName': cardholder,
+      'expiresAt': expiry,
+      'isDefault': False,
+      'status': 'valid',
+      'createdAt': datetime.utcnow()
+    }
+
   if payments_collection.count_documents({'userId': user_id}) == 0:
     doc['isDefault'] = True
   inserted = payments_collection.insert_one(doc)

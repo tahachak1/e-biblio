@@ -4,6 +4,7 @@ import { ShoppingCart, Eye } from 'lucide-react';
 import { Button } from './ui/button';
 import { useCart } from '../contexts/CartContext';
 import { toast } from 'sonner';
+import { ImageWithFallback } from './figma/ImageWithFallback';
 
 interface BookCardProps {
   id: string;
@@ -38,11 +39,14 @@ export const BookCard: React.FC<BookCardProps> = ({
   };
 
   const handleAddToCart = (type: 'purchase' | 'rent') => {
+    const rentBase = rentPrice ?? price;
     addToCart({
       id: `${id}-${type}`,
       title,
       author,
-      price: type === 'rent' && rentPrice ? rentPrice : price,
+      price: type === 'rent' ? rentBase : price,
+      rentPrice: type === 'rent' ? rentBase : undefined,
+      rentalDuration: type === 'rent' ? 7 : undefined,
       image,
       type,
     });
@@ -63,7 +67,7 @@ export const BookCard: React.FC<BookCardProps> = ({
       }}
     >
       <div className="relative aspect-[2/3] overflow-hidden bg-gray-100 dark:bg-[#1f1f1f]">
-        <img
+        <ImageWithFallback
           src={image}
           alt={title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

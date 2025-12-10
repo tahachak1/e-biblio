@@ -1,6 +1,0 @@
-
-> user-profile-service@1.0.0 start
-> node src/index.js
-
-user-profile-service running on 4003
-User-profile connected to MongoDB

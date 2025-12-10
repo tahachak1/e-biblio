@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { StatusBadge } from './StatusBadge';
 import type { Order } from '../../pages/OrdersPage';
@@ -19,6 +20,8 @@ const formatDate = (value?: string) => {
 };
 
 export const DataTable: React.FC<Props> = ({ orders, loading }) => {
+  const navigate = useNavigate();
+
   if (loading) {
     return (
       <div className="w-full py-12 text-center text-slate-500">
@@ -73,7 +76,12 @@ export const DataTable: React.FC<Props> = ({ orders, loading }) => {
               <td className="px-5 py-4 text-slate-700">{formatDate(order.createdAt)}</td>
               <td className="px-5 py-4 text-slate-700">{order.paymentMethod || 'N/A'}</td>
               <td className="px-5 py-4 text-right">
-                <Button variant="outline" size="sm" className="border-slate-200">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-200"
+                  onClick={() => navigate(`/orders/${order._id}`)}
+                >
                   View
                 </Button>
               </td>

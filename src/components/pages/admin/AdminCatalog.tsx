@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../../ui/card";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -39,6 +40,7 @@ interface Category {
 
 export function AdminCatalog() {
   const { setCurrentPage } = useApp();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [categories, setCategories] = useState<Category[]>([]);
@@ -101,6 +103,7 @@ export function AdminCatalog() {
 
   const handleBackToDashboard = () => {
     setCurrentPage('admin-dashboard');
+    navigate('/admin/dashboard');
   };
 
   const resetForm = () => {

@@ -68,6 +68,8 @@ api.cart = {
 
 api.orders = {
   getOrders: async () => (await http.get('/orders')).data,
+  getOrder: async (id: string) => (await http.get(`/orders/${id}`)).data,
+  downloadInvoice: async (id: string) => (await http.get(`/orders/${id}/invoice`, { responseType: 'blob' })).data,
   createOrder: async (payload: any) => (await http.post('/orders', payload)).data,
   getAdminSummary: async () => (await http.get('/orders/admin-summary')).data,
 };
@@ -85,6 +87,7 @@ api.admin = {
   deleteUser: async (id: string) => (await http.delete(`/admin/users/${id}`)).data,
   getOrders: async () => (await http.get('/admin/orders')).data,
   updateOrderStatus: async (id: string, status: string) => (await http.patch(`/admin/orders/${id}/status`, { status })).data,
+  sendNotification: async (payload: any) => (await http.post('/admin/notifications', payload)).data,
   getCategories: async () => (await http.get('/categories')).data,
   createCategory: async (payload: any) => (await http.post('/categories', payload)).data,
   updateCategory: async (id: string, payload: any) => (await http.patch(`/categories/${id}`, payload)).data,

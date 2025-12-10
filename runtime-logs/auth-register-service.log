@@ -1,6 +1,0 @@
-
-> auth-register-service@1.0.0 start
-> node src/index.js
-
-auth-register-service running on 4002
-Auth-register connected to MongoDB

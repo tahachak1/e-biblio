@@ -19,6 +19,7 @@ import { BookDetails } from './pages/BookDetails';
 import { Cart } from './pages/Cart';
 import { Checkout } from './pages/Checkout';
 import { Orders } from './pages/Orders';
+import OrderDetailsPage from './pages/OrderDetailsPage';
 import AdminLayout from './layouts/AdminLayout';
 import { AdminDashboard } from './components/pages/admin/AdminDashboard';
 import { AdminOrders } from './components/pages/admin/AdminOrders';
@@ -69,6 +70,14 @@ const AppLayout: React.FC = () => {
             element={
               <PrivateRoute>
                 <Orders />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/orders/:id"
+            element={
+              <PrivateRoute>
+                <OrderDetailsPage />
               </PrivateRoute>
             }
           />

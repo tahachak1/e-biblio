@@ -6,6 +6,11 @@ const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const nodemailer = require('nodemailer');
+const fs = require('fs');
+const path = require('path');
+const puppeteer = require('puppeteer');
+const generateInvoice = require('./utils/generateInvoice');
+const invoiceRoute = require('./routes/invoiceRoute');
 
 dotenv.config();
 
@@ -18,8 +23,12 @@ const {
   EMAIL_PASS,
   EMAIL_HOST = 'smtp.gmail.com',
   EMAIL_PORT = 587,
-  EMAIL_FROM = EMAIL_USER
+  EMAIL_FROM = EMAIL_USER,
+  FRONT_URL = 'http://localhost:3000'
 } = process.env;
+
+const invoicesDir = path.join(__dirname, 'invoices');
+fs.mkdirSync(invoicesDir, { recursive: true });
 
 mongoose.connect(MONGO_URI).then(() => console.log('Order-service connected to MongoDB')).catch((err) => console.error('Mongo error', err));
 
@@ -38,6 +47,8 @@ const orderItemSchema = new mongoose.Schema({
     title: String,
     author: String,
     image: String,
+    price: Number,
+    rentPrice: Number,
   }
 }, { _id: false });
 
@@ -48,6 +59,7 @@ const orderSchema = new mongoose.Schema({
   customerEmail: String,
   items: { type: [orderItemSchema], default: [] },
   totalAmount: Number,
+  paymentMethod: { type: String, default: 'stripe' },
   status: { type: String, default: 'pending' },
   shippingAddress: {
     name: String,
@@ -56,6 +68,17 @@ const orderSchema = new mongoose.Schema({
     postalCode: String,
     country: String,
     email: String,
+  },
+  shippingTracking: {
+    number: String,
+    carrier: { type: String, default: 'eBiblio Logistics' },
+    status: String,
+    eta: Date,
+    history: [{
+      status: String,
+      message: String,
+      updatedAt: { type: Date, default: Date.now }
+    }]
   }
 }, { timestamps: true });
 
@@ -80,6 +103,195 @@ const mailer = EMAIL_USER && EMAIL_PASS ? nodemailer.createTransport({
   },
 }) : null;
 
+const statusLabel = {
+  pending: 'En attente',
+  processing: 'En cours',
+  shipped: 'Expédiée',
+  delivered: 'Livrée',
+  completed: 'Terminée',
+  cancelled: 'Annulée',
+  canceled: 'Annulée',
+  paid: 'Payée',
+};
+
+function isDigitalItem(item = {}) {
+  const type = (item.type || '').toString().toLowerCase();
+  const bookType = (item.bookType || '').toString().toLowerCase();
+  const format = (item.book?.format || '').toString().toLowerCase();
+  const digitalTypes = ['digital', 'ebook', 'e-book', 'digital-rent', 'location-numerique', 'numerique', 'numerique-rent'];
+  const isRent = type.includes('rent') || type.includes('location');
+  const isDigitalType = digitalTypes.includes(type);
+  const isDigitalBookType = ['numerique', 'digital', 'ebook', 'e-book'].includes(bookType);
+  const isDigitalFormat = ['digital', 'numerique', 'ebook', 'e-book'].includes(format);
+  const isBookFlag = Boolean(item.book?.isDigital);
+  return isDigitalType || isDigitalFormat || isDigitalBookType || isBookFlag || (isRent && (isDigitalFormat || isDigitalBookType));
+}
+
+// Auto progression cadence: stagger each email/status by ~10s (configurable via DEMO_STEP_MS).
+const AUTO_STEP_MS = Number(process.env.DEMO_STEP_MS || 10000);
+const SHIP_AFTER_MS = AUTO_STEP_MS * 2; // ~20s
+const DELIVER_AFTER_MS = AUTO_STEP_MS * 3; // ~30s
+
+function generateTrackingNumber() {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let out = 'TRK-';
+  for (let i = 0; i < 10; i += 1) {
+    out += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  }
+  return out;
+}
+
+function scheduleAutoProgress(orderId) {
+  setTimeout(async () => {
+    try {
+      const now = new Date();
+      const orderCurrent = await Order.findById(orderId);
+      const hasPhysical = orderCurrent && (orderCurrent.items || []).some((it) => !isDigitalItem(it));
+      if (!hasPhysical) return; // pas d'auto progression pour les commandes 100% numériques
+      const order = await Order.findByIdAndUpdate(orderId, {
+        status: 'shipped',
+        $set: {
+          'shippingTracking.status': 'shipped',
+          'shippingTracking.eta': new Date(now.getTime() + (DELIVER_AFTER_MS - SHIP_AFTER_MS)),
+        },
+        $push: { 'shippingTracking.history': { status: 'shipped', message: 'Colis expédié (auto)', updatedAt: now } },
+      }, { new: true });
+      if (order) {
+        await sendStatusEmail(order, 'shipped', 'Votre colis vient d’être expédié.');
+      }
+    } catch (err) {
+      console.error('Auto-progress to shipped failed', err);
+    }
+  }, SHIP_AFTER_MS);
+
+  setTimeout(async () => {
+    try {
+      const now = new Date();
+      const orderCurrent = await Order.findById(orderId);
+      const hasPhysical = orderCurrent && (orderCurrent.items || []).some((it) => !isDigitalItem(it));
+      if (!hasPhysical) return;
+      const order = await Order.findByIdAndUpdate(orderId, {
+        status: 'delivered',
+        $set: {
+          'shippingTracking.status': 'delivered',
+          'shippingTracking.eta': now,
+        },
+        $push: { 'shippingTracking.history': { status: 'delivered', message: 'Livrée (auto)', updatedAt: now } },
+      }, { new: true });
+      if (order) {
+        await sendStatusEmail(order, 'delivered', 'Votre commande est livrée.');
+      }
+    } catch (err) {
+      console.error('Auto-progress to delivered failed', err);
+    }
+  }, DELIVER_AFTER_MS);
+}
+
+async function generateInvoicePdf(order) {
+  const html = generateInvoice(order);
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    await page.emulateMediaType('screen');
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '24mm', right: '16mm', bottom: '24mm', left: '16mm' },
+    });
+    const fileName = `order_${order._id || order.orderNumber || Date.now()}.pdf`;
+    const filePath = path.join(invoicesDir, fileName);
+    fs.writeFileSync(filePath, pdfBuffer);
+    return { pdfBuffer, filePath };
+  } finally {
+    if (browser) await browser.close();
+  }
+}
+
+async function sendStatusEmail(order, status, customMessage) {
+  if (!mailer) return;
+  const toEmail = order?.shippingAddress?.email || order?.customerEmail;
+  if (!toEmail) return;
+  const label = statusLabel[status] || status || 'Mise à jour';
+  const tracking = order?.shippingTracking;
+  const orderId = order.orderNumber || order.numero || order._id;
+  const link = `${FRONT_URL.replace(/\/$/, '')}/orders/${order._id}`;
+  const physicalItems = (order.items || []).filter((it) => !isDigitalItem(it));
+  // Ne pas envoyer d'email de statut pour les commandes 100% numériques
+  if (!physicalItems.length) return;
+  const lines = [
+    `Bonjour,`,
+    ``,
+    `Votre commande #${orderId} a été mise à jour.`,
+    `Statut : ${label}.`,
+  ];
+  if (tracking?.number) {
+    lines.push(`Numéro de suivi : ${tracking.number}`);
+    if (tracking.carrier) lines.push(`Transporteur : ${tracking.carrier}`);
+  }
+  if (customMessage) {
+    lines.push('', customMessage);
+  }
+  if (physicalItems.length) {
+    lines.push('', 'Articles à livrer :');
+    physicalItems.slice(0, 5).forEach((it) => {
+      lines.push(`- ${(it.book && it.book.title) || 'Article'} x${it.quantity || 1}`);
+    });
+    if (physicalItems.length > 5) lines.push(`... +${physicalItems.length - 5} autres`);
+  } else {
+    lines.push('', 'Aucun article physique à livrer (commande numérique uniquement).');
+  }
+  lines.push('', `Suivre ma commande : ${link}`, '', `Merci pour votre confiance.`, `e-Biblio`);
+
+  const text = lines.join('\n');
+  const html = `
+    <div style="font-family:'Inter',system-ui,-apple-system,sans-serif;background:#f8fafc;padding:20px;">
+      <div style="max-width:560px;margin:0 auto;background:white;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#1d4ed8,#6366f1);color:white;padding:18px 20px;font-weight:700;">
+          Mise à jour : ${label}
+        </div>
+        <div style="padding:20px;color:#0f172a;">
+          <p style="margin:0 0 10px 0;">Bonjour,</p>
+          <p style="margin:0 0 12px 0;">Votre commande <strong>#${orderId}</strong> a été mise à jour.</p>
+          <p style="margin:0 0 12px 0;">Statut : <strong>${label}</strong></p>
+          ${tracking?.number ? `<p style="margin:0 0 6px 0;">Numéro de suivi : <strong>${tracking.number}</strong></p>` : ''}
+          ${tracking?.carrier ? `<p style="margin:0 0 12px 0;">Transporteur : <strong>${tracking.carrier}</strong></p>` : ''}
+          ${customMessage ? `<p style="margin:0 0 12px 0;color:#334155;">${customMessage}</p>` : ''}
+          ${physicalItems.length ? `
+            <div style="margin:10px 0;padding:10px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+              <div style="font-weight:600;color:#0f172a;margin-bottom:6px;">Articles à livrer :</div>
+              <ul style="margin:0;padding-left:18px;color:#334155;font-size:14px;line-height:1.5;">
+                ${physicalItems.slice(0,5).map(it => `<li>${(it.book && it.book.title) || 'Article'} x${it.quantity || 1}</li>`).join('')}
+                ${physicalItems.length > 5 ? `<li>... +${physicalItems.length - 5} autres</li>` : ''}
+              </ul>
+            </div>
+          ` : `
+            <div style="margin:10px 0;padding:10px;border:1px solid #fde68a;border-radius:10px;background:#fffbeb;color:#92400e;font-size:13px;">
+              Aucun article physique à livrer (commande numérique uniquement).
+            </div>
+          `}
+          <a href="${link}" style="display:inline-block;margin-top:12px;padding:10px 14px;background:#1d4ed8;color:white;border-radius:10px;text-decoration:none;font-weight:600;">Suivre ma commande</a>
+        </div>
+        <div style="background:#f8fafc;padding:14px 20px;color:#64748b;font-size:13px;text-align:center;">
+          Merci pour votre confiance.
+        </div>
+      </div>
+    </div>
+  `;
+
+  await mailer.sendMail({
+    to: toEmail,
+    from: EMAIL_FROM || EMAIL_USER,
+    subject: `Commande #${orderId} – ${label}`,
+    text,
+    html,
+  });
+}
+
 async function sendReceipt(order, toEmail) {
   if (!mailer || !toEmail) return;
   const total = (order.totalAmount || 0).toFixed(2);
@@ -87,18 +299,33 @@ async function sendReceipt(order, toEmail) {
     title: item.book?.title || 'Article',
     qty: item.quantity || 1,
     price: (item.price || 0).toFixed(2),
+    type: item.type || 'physique',
+    downloadLink: item.downloadLink,
   }));
+  const digitalRentals = items.filter((i) => i.type === 'digital-rent' || i.type === 'location-numerique');
+  const digitalPurchases = items.filter((i) => i.type === 'digital' || i.type === 'ebook');
+  const physicalItems = items.filter((i) => !digitalRentals.includes(i) && !digitalPurchases.includes(i));
+
   const text = [
     `Bonjour,`,
     ``,
-    `Merci pour votre commande #${order.orderNumber || order.numero}.`,
+    `Merci pour votre paiement. Votre commande #${order.orderNumber || order.numero} est confirmée.`,
     ``,
     `Détail :`,
     ...items.map((i) => `- ${i.title} x${i.qty} : ${i.price} CAD`),
     ``,
     `Total : ${total} CAD`,
     ``,
-    `Statut : ${order.status || 'pending'}`,
+    `Statut : ${order.status || 'paid'}`,
+    digitalRentals.length
+      ? `Accès location numérique : consultez vos livres loués dans votre profil e-Biblio (section Mes locations numériques).`
+      : null,
+    digitalPurchases.length
+      ? `Livres numériques achetés : retrouvez-les dans votre profil e-Biblio (section Mes livres numériques)${digitalPurchases.some((d) => d.downloadLink) ? ' et dans les pièces jointes si disponibles.' : '.'}`
+      : null,
+    physicalItems.length === 0
+      ? `Aucun article physique à livrer.`
+      : `Articles à livrer : ${physicalItems.length}`,
     ``,
     `e-Biblio`,
   ].join('\n');
@@ -122,8 +349,22 @@ async function sendReceipt(order, toEmail) {
       <div style="padding:24px;">
         <p style="margin:0 0 12px 0;color:#111827;font-size:15px;">Bonjour,</p>
         <p style="margin:0 0 16px 0;color:#4b5563;font-size:14px;line-height:1.6;">
-          Nous avons bien reçu votre paiement. Voici le récapitulatif de votre commande.
+          Nous avons bien reçu votre paiement. Voici votre reçu et la facture en pièce jointe.
         </p>
+        ${digitalRentals.length ? `
+          <div style="margin:12px 0;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;color:#111827;font-size:13px;line-height:1.5;">
+            <strong>Locations numériques :</strong><br/>
+            Accédez à vos livres loués dans votre profil e-Biblio (section « Mes locations numériques »).
+          </div>` : ''}
+        ${digitalPurchases.length ? `
+          <div style="margin:12px 0;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;color:#111827;font-size:13px;line-height:1.5;">
+            <strong>Livres numériques achetés :</strong><br/>
+            Disponibles dans votre profil (section « Mes livres numériques »).${digitalPurchases.some(d => d.downloadLink) ? '<br/>Téléchargements en pièce jointe si fournis.' : ''}
+          </div>` : ''}
+        ${physicalItems.length === 0 ? `
+          <div style="margin:12px 0;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#fdf8f3;color:#7c2d12;font-size:13px;line-height:1.5;">
+            Aucun article physique à livrer.
+          </div>` : ''}
         <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:12px;">
           <table style="width:100%;border-collapse:collapse;">
             <thead>
@@ -142,7 +383,7 @@ async function sendReceipt(order, toEmail) {
             </tbody>
           </table>
         </div>
-        <p style="margin:16px 0 0 0;color:#6b7280;font-size:13px;">Statut : ${statusLabel[order.status] || order.status || 'pending'}</p>
+        <p style="margin:16px 0 0 0;color:#6b7280;font-size:13px;">Statut : ${statusLabel[order.status] || order.status || 'payée'}</p>
       </div>
       <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 24px;color:#6b7280;font-size:12px;text-align:center;">
         e-Biblio — Merci pour votre confiance.
@@ -151,12 +392,31 @@ async function sendReceipt(order, toEmail) {
   </div>
   `;
 
+  let attachments = [];
+  try {
+    const pdf = await generateInvoicePdf(order);
+    attachments.push({ filename: `facture_${order.orderNumber || order._id}.pdf`, path: pdf.filePath });
+  } catch (err) {
+    console.error('Invoice PDF generation failed (email fallback without PDF)', err);
+  }
+
+  // Ajouter les fichiers numériques achetés s'ils sont fournis via downloadLink (supposé chemin local ou URL)
+  digitalPurchases.forEach((d) => {
+    if (d.downloadLink) {
+      attachments.push({
+        filename: `${(d.title || 'ebook').replace(/\s+/g, '_')}.pdf`,
+        path: d.downloadLink,
+      });
+    }
+  });
+
   await mailer.sendMail({
     to: toEmail,
     from: EMAIL_FROM || EMAIL_USER,
-    subject: `Votre commande e-Biblio #${order.orderNumber || order.numero}`,
+    subject: `Votre commande e-Biblio #${order.orderNumber || order.numero} – Reçu`,
     text,
     html,
+    attachments: attachments.length ? attachments : undefined,
   });
 }
 
@@ -172,6 +432,8 @@ function authRequired(req, res, next) {
   }
 }
 
+app.use('/orders', invoiceRoute(authRequired));
+
 async function fetchBook(bookId) {
   try {
     const response = await axios.get(`${BOOK_SERVICE_URL}/books/${bookId}`);
@@ -184,7 +446,7 @@ async function fetchBook(bookId) {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 app.post('/orders', authRequired, async (req, res) => {
-  let { items = [], shippingAddress = {}, totalAmount } = req.body;
+  let { items = [], shippingAddress = {}, totalAmount, paymentMethod } = req.body;
   if (typeof items === 'string') {
     try {
       items = JSON.parse(items);
@@ -227,11 +489,17 @@ app.post('/orders', authRequired, async (req, res) => {
           title: book?.title || 'Livre',
           author: book?.author || 'Auteur inconnu',
           image: book?.image || '',
+          price: book?.price,
+          rentPrice: book?.rentPrice,
         }
       });
     }
 
     const orderNumber = uuidv4().split('-')[0].toUpperCase();
+    const now = new Date();
+    const trackingNumber = generateTrackingNumber();
+    const hasPhysical = enrichedItems.some((it) => !isDigitalItem(it));
+    const eta = hasPhysical ? new Date(now.getTime() + DELIVER_AFTER_MS) : undefined;
     const order = await Order.create({
       userId: req.user.userId,
       items: enrichedItems,
@@ -239,9 +507,22 @@ app.post('/orders', authRequired, async (req, res) => {
       numero: orderNumber,
       customerEmail,
       totalAmount: typeof totalAmount === 'number' ? totalAmount : computedTotal,
-      status: 'pending',
-      shippingAddress
+      status: 'processing',
+      paymentMethod: paymentMethod || 'stripe',
+      shippingAddress,
+      shippingTracking: {
+        number: trackingNumber,
+        carrier: hasPhysical ? 'eBiblio Logistics' : 'Digital',
+        status: hasPhysical ? 'processing' : 'digital',
+        eta,
+        history: [
+          { status: hasPhysical ? 'processing' : 'digital', message: 'Commande enregistrée', updatedAt: now }
+        ]
+      }
     });
+    if (hasPhysical) {
+      scheduleAutoProgress(order._id);
+    }
 
     // Mettre à jour les stats utilisateur (best effort)
     try {
@@ -264,6 +545,14 @@ app.post('/orders', authRequired, async (req, res) => {
     // Envoi du reçu (best-effort)
     try {
       await sendReceipt(order, customerEmail);
+      // Décaler l'email de statut de ~10s pour éviter l'envoi simultané avec la facture
+      if (hasPhysical) {
+        setTimeout(() => {
+          sendStatusEmail(order, 'processing', 'Votre commande est en cours de traitement.').catch((errMail) =>
+            console.error('Processing status email failed', errMail)
+          );
+        }, AUTO_STEP_MS);
+      }
     } catch (errMail) {
       console.error('Email receipt failed', errMail);
     }
@@ -338,6 +627,21 @@ app.get('/orders/summary', authRequired, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Erreur lors de la récupération du résumé des commandes' });
+  }
+});
+
+app.get('/orders/:id', authRequired, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Commande introuvable' });
+    const isOwner = order.userId && order.userId.toString() === req.user.userId;
+    if (!isOwner && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
+    res.json(order);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur lors de la récupération de la commande' });
   }
 });
 

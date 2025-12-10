@@ -1,6 +1,0 @@
-
-> order-service@1.0.0 start
-> node src/index.js
-
-order-service running on 4004
-Order-service connected to MongoDB

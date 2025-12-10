@@ -1,0 +1,216 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "frontend: npm run dev",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=5173; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; npm run dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "api-gateway: npm run dev",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=4000; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; npm run dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/api-gateway"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "admin-service: npm run dev",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=4005; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; npm run dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/admin-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "auth-login-service: npm run dev",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=4001; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; npm run dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/auth-login-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "auth-register-service: npm run dev",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=4002; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; npm run dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/auth-register-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "user-profile-service: npm run dev",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=4003; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; npm run dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/user-profile-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "order-service: npm run dev",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=4004; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; npm run dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/order-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "book-catalog-service: uvicorn",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=8002; PY=python3; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; $PY -m uvicorn main:app --reload --host 0.0.0.0 --port $PORT"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/book-catalog-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "otp-service: uvicorn",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=8001; PY=python3; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; $PY -m uvicorn main:app --reload --host 0.0.0.0 --port $PORT"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/otp-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "payment-service: uvicorn",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=8003; PY=python3; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; $PY -m uvicorn main:app --reload --host 0.0.0.0 --port $PORT"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/payment-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "chatbot-service: uvicorn",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "PORT=8010; PY=python3; pids=$(lsof -ti tcp:$PORT || true); if [ -n \"$pids\" ]; then kill $pids; sleep 1; fi; $PY -m uvicorn main:app --reload --host 0.0.0.0 --port $PORT"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/chatbot-service"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Lancer tous les services",
+      "type": "shell",
+      "command": "echo Lancement des services…",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "dependsOn": [
+        "frontend: npm run dev",
+        "api-gateway: npm run dev",
+        "admin-service: npm run dev",
+        "auth-login-service: npm run dev",
+        "auth-register-service: npm run dev",
+        "user-profile-service: npm run dev",
+        "order-service: npm run dev",
+        "book-catalog-service: uvicorn",
+        "otp-service: uvicorn",
+        "payment-service: uvicorn",
+        "chatbot-service: uvicorn"
+      ],
+      "dependsOrder": "parallel"
+    }
+  ]
+}

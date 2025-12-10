@@ -29,12 +29,14 @@ import {
 import { useApp } from "../../AppContext";
 
 export function AdminDashboard() {
-  const { adminStats, setCurrentPage, loadAdminStats } = useApp();
+  const { adminStats, loadAdminStats, user } = useApp();
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadAdminStats();
-  }, []);
+    if (user?.role === 'admin') {
+      loadAdminStats();
+    }
+  }, [user?.role]);
 
   const statsAny = adminStats as any;
 
@@ -54,6 +56,7 @@ export function AdminDashboard() {
 
   const miniVentes = salesData.map((d) => d.ventes || 0);
   const miniLocations = salesData.map((d) => d.locations || 0);
+  const weeklyLocations = salesData.reduce((sum, d) => sum + (d.locations || 0), 0);
 
   const categoryPalette = ["#2563EB", "#0EA5E9", "#10B981", "#F59E0B", "#9333EA", "#F97316", "#14B8A6", "#EF4444"];
   const categoryData =
@@ -142,7 +145,7 @@ export function AdminDashboard() {
             <CardContent className="space-y-1">
               <div className="text-2xl font-semibold text-slate-900">{adminStats.locationsActives ?? 0}</div>
               <p className="text-xs text-slate-600">
-                <span className="text-blue-600 font-semibold">+8</span> nouvelles cette semaine
+                <span className="text-blue-600 font-semibold">{weeklyLocations}</span> locations (7 derniers jours)
               </p>
               <div className="h-12">
                 <ResponsiveContainer width="100%" height="100%">
@@ -165,7 +168,11 @@ export function AdminDashboard() {
             </CardHeader>
             <CardContent className="space-y-1">
               <div className="text-2xl font-semibold text-red-600">{adminStats.retards ?? 0}</div>
-              <p className="text-xs text-slate-600">À traiter en priorité</p>
+              <p className="text-xs text-slate-600">
+                {adminStats.retards && adminStats.retards > 0
+                  ? 'À traiter en priorité'
+                  : 'Aucun retard signalé'}
+              </p>
             </CardContent>
           </Card>
 

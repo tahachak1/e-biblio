@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../../ui/card";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -15,8 +16,12 @@ interface OrderItem {
   title: string;
   author?: string;
   type?: string;
+  bookType?: string;
   price?: number;
   quantity?: number;
+  rentalDurationDays?: number;
+  rentalStartAt?: string;
+  rentalEndAt?: string;
 }
 
 interface Order {
@@ -48,6 +53,7 @@ const statusLabels: Record<string, string> = {
 
 export function AdminOrders() {
   const { setCurrentPage } = useApp();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -63,13 +69,17 @@ export function AdminOrders() {
       title: it.book?.title || it.title,
       author: it.book?.author,
       type: it.type,
+      bookType: it.bookType,
       price: it.price,
       quantity: it.quantity,
+      rentalDurationDays: it.rentalDurationDays,
+      rentalStartAt: it.rentalStartAt,
+      rentalEndAt: it.rentalEndAt,
     })),
     montant: o.totalAmount || o.total || 0,
     statut: statusLabels[o.status] || o.status || "en attente",
     dateCommande: o.createdAt,
-    methodePaiement: o.paymentMethod,
+    methodePaiement: o.paymentMethod || 'stripe',
     adresseLivraison: {
       nom: o.shippingAddress?.name?.split(" ").slice(-1).join(" "),
       prenom: o.shippingAddress?.name?.split(" ")[0],
@@ -98,6 +108,7 @@ export function AdminOrders() {
 
   const handleBackToDashboard = () => {
     setCurrentPage('admin-dashboard');
+    navigate('/admin/dashboard');
   };
 
   const updateStatus = async (orderId: string, status: string, successMessage: string) => {
@@ -144,6 +155,14 @@ export function AdminOrders() {
   const getPendingOrders = () => orders.filter(o => o.statut === 'en attente').length;
   const getShippedOrders = () => orders.filter(o => o.statut === 'expédiée').length;
   const getTotalRevenue = () => orders.filter(o => o.statut !== 'annulée').reduce((sum, o) => sum + (o.montant || 0), 0);
+  const getItemCount = (order: Order) => order.items.reduce((sum, item) => sum + (item.quantity || 1), 0);
+  const formatDate = (value?: string) => value ? new Date(value).toLocaleDateString('fr-FR') : '—';
+  const formatItemType = (value?: string) => {
+    if (!value) return '—';
+    if (value === 'rent' || value === 'location') return 'location';
+    if (value === 'purchase' || value === 'achat') return 'achat';
+    return value;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -151,7 +170,7 @@ export function AdminOrders() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <Button variant="outline" onClick={handleBackToDashboard}>
+            <Button type="button" variant="outline" onClick={handleBackToDashboard}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Tableau de bord
             </Button>
@@ -161,9 +180,9 @@ export function AdminOrders() {
             </div>
           </div>
 
-          <Button className="bg-blue-600 hover:bg-blue-700">
+          <Button className="bg-blue-600 hover:bg-blue-700" onClick={fetchOrders}>
             <Download className="h-4 w-4 mr-2" />
-            Exporter CSV
+            Rafraîchir
           </Button>
         </div>
 
@@ -272,9 +291,9 @@ export function AdminOrders() {
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        {order.items.length} article{order.items.length > 1 ? 's' : ''}
+                        {getItemCount(order)} article{getItemCount(order) > 1 ? 's' : ''}
                         <div className="text-xs text-gray-500">
-                          {order.items.slice(0, 2).map(item => item.title).join(', ')}
+                          {order.items.slice(0, 2).map(item => item.title).join(', ') || '—'}
                           {order.items.length > 2 && '...'}
                         </div>
                       </div>
@@ -351,11 +370,16 @@ export function AdminOrders() {
                                               <p className="font-medium">{item.title}</p>
                                               {item.author && <p className="text-sm text-gray-600">{item.author}</p>}
                                               <div className="flex items-center gap-2 mt-1">
-                                                <Badge variant={item.type === 'achat' ? 'default' : 'secondary'}>
-                                                  {item.type || '—'}
+                                                <Badge variant={(item.type === 'rent' || item.type === 'location') ? 'secondary' : 'default'}>
+                                                  {formatItemType(item.type)}
                                                 </Badge>
                                                 <span className="text-sm">Qté: {item.quantity || 1}</span>
                                               </div>
+                                              {(item.type === 'rent' || item.type === 'location' || item.bookType === 'numerique') && (
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                  Location: {formatDate(item.rentalStartAt)} → {formatDate(item.rentalEndAt)} ({item.rentalDurationDays || '—'} jours)
+                                                </p>
+                                              )}
                                             </div>
                                             <div className="text-right">
                                               <p className="font-medium">${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</p>

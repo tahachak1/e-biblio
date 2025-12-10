@@ -53,6 +53,19 @@ export interface OrderItem {
   quantity: number;
   price: number;
   total: number;
+  bookType?: string;
+  image?: string;
+  rentalDurationDays?: number;
+  rentalStartAt?: string;
+  rentalEndAt?: string;
+  pdfUrl?: string;
+  book?: {
+    title?: string;
+    author?: string;
+    image?: string;
+    pdfUrl?: string;
+    type?: string;
+  };
 }
 
 export interface OrderSummary {

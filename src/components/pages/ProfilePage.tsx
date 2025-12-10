@@ -42,6 +42,7 @@ import {
   DialogTrigger,
 } from '../ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import api from '../../services/api';
 
 const defaultAddress: Address = {
   rue: '',
@@ -104,6 +105,23 @@ const initialPasswordForm: PasswordFormState = {
   confirmPassword: '',
 };
 
+type DigitalLibraryItem = {
+  id: string;
+  bookId?: string;
+  title: string;
+  author: string;
+  image?: string;
+  pdfUrl?: string;
+  startAt: string;
+  endAt?: string;
+  daysLeft: number;
+  expired: boolean;
+  statusLabel: string;
+  type: string;
+  isRental: boolean;
+  totalPages?: number;
+};
+
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { logout, refreshProfile, user } = useAuth();
@@ -137,10 +155,46 @@ export const ProfilePage: React.FC = () => {
     booksRented: 0,
   });
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [digitalLibrary, setDigitalLibrary] = useState<DigitalLibraryItem[]>([]);
+  const [pdfPreview, setPdfPreview] = useState<DigitalLibraryItem | null>(null);
+  const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  useEffect(() => {
+    if (!pdfPreview) return;
+    const handler = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (key === 'p' || key === 's' || key === 'c' || key === 'a')) {
+        e.preventDefault();
+        toast.warning('Copie / impression désactivées dans le viewer protégé.');
+      }
+    };
+    const blockContext = (ev: Event) => ev.preventDefault();
+    window.addEventListener('keydown', handler);
+    window.addEventListener('contextmenu', blockContext);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('contextmenu', blockContext);
+    };
+  }, [pdfPreview]);
+
+  const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  };
 
   useEffect(() => {
     loadAllData();
   }, []);
+
+  useEffect(() => {
+    void hydrateDigitalLibrary(orders);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
 
   const loadAllData = async () => {
     try {
@@ -219,19 +273,22 @@ export const ProfilePage: React.FC = () => {
       daysLeft: number;
     }[] = [];
 
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
     orders.forEach((order) => {
       order.items
-        ?.filter((item) => item.type === 'location')
+        ?.filter((item) => (item.type || '').toLowerCase().includes('loc') || item.type === 'rent')
         .forEach((item) => {
-          const rentDate = new Date(order.createdAt || order.placedAt || Date.now());
-          const dueDate = new Date(rentDate);
-          dueDate.setDate(rentDate.getDate() + 14);
-          const diff = Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          const rentDateValue = item.rentalStartAt || order.createdAt || order.placedAt || Date.now();
+          const rentDate = new Date(rentDateValue);
+          const duration = item.rentalDurationDays || 14;
+          const dueDate = new Date(item.rentalEndAt || rentDate.getTime() + duration * DAY_MS);
+          const diff = Math.ceil((dueDate.getTime() - Date.now()) / DAY_MS);
 
           rentals.push({
             id: `${order._id}-${item.bookId}`,
-            title: item.title,
-            author: item.author,
+            title: item.title || item.book?.title || 'Livre',
+            author: item.author || item.book?.author || 'Auteur',
             rentDate: rentDate.toISOString(),
             dueDate: dueDate.toISOString(),
             daysLeft: diff,
@@ -411,6 +468,104 @@ export const ProfilePage: React.FC = () => {
     }
   };
 
+  const handleOpenPdf = async (item: DigitalLibraryItem) => {
+    if (item.expired) {
+      toast.error('Accès expiré pour cette location.');
+      return;
+    }
+    if (!item.pdfUrl) {
+      toast.error('PDF non disponible pour ce livre.');
+      return;
+    }
+    const win = window.open(item.pdfUrl, '_blank', 'noopener,noreferrer');
+    if (!win) {
+      toast.error('Le navigateur a bloqué l’ouverture du PDF (pop-up). Autorisez les pop-ups pour ce site.');
+    }
+  };
+
+  const hydrateDigitalLibrary = async (orderList: OrderSummary[]) => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const items: DigitalLibraryItem[] = [];
+    const missingPdfBookIds = new Set<string>();
+
+    orderList.forEach((order) => {
+      (order.items || []).forEach((item) => {
+        const rawType = (item.type || '').toLowerCase();
+        const bookType = (item.bookType || item.book?.type || '').toLowerCase();
+        const isRental = rawType.includes('loc') || rawType === 'rent';
+        const isDigital = isRental || bookType === 'numerique';
+        if (!isDigital) return;
+
+        const startRaw = item.rentalStartAt || order.createdAt || order.placedAt || Date.now();
+        const startAt = new Date(startRaw);
+        const duration = isRental ? (item.rentalDurationDays || 14) : 3650;
+        const endAtDate = isRental ? new Date(item.rentalEndAt || startAt.getTime() + duration * DAY_MS) : null;
+        const daysLeft = isRental
+          ? Math.ceil((endAtDate!.getTime() - Date.now()) / DAY_MS)
+          : 9999;
+        const expired = isRental ? daysLeft < 0 : false;
+        const statusLabel = isRental
+          ? expired
+            ? 'Accès expiré'
+            : `Accès autorisé · ${daysLeft} j restants`
+          : 'Accès permanent';
+
+        const pdfUrl =
+          item.pdfUrl ||
+          item.book?.pdfUrl ||
+          undefined;
+        if (!pdfUrl && item.bookId) {
+          missingPdfBookIds.add(item.bookId);
+        }
+
+        items.push({
+          id: `${order._id}-${item.bookId}`,
+          bookId: item.bookId,
+          title: item.title || item.book?.title || 'Livre numérique',
+          author: item.author || item.book?.author || 'Auteur',
+          image: item.image || item.book?.image,
+          pdfUrl,
+          startAt: startAt.toISOString(),
+          endAt: endAtDate?.toISOString(),
+          daysLeft,
+          expired,
+          statusLabel,
+          type: rawType || bookType || 'rent',
+          isRental,
+        });
+      });
+    });
+
+    setDigitalLibrary(items);
+
+    if (missingPdfBookIds.size === 0) return;
+    try {
+      setPdfLoading(true);
+      const ids = Array.from(missingPdfBookIds);
+      const fetched = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const book = await api.books.getBook(id);
+            return { id, pdfUrl: book?.pdfUrl || (book?.pdfBase64 ? `data:application/pdf;base64,${book.pdfBase64}` : undefined) };
+          } catch (err) {
+            console.warn('Impossible de récupérer le PDF pour', id, err);
+            return { id, pdfUrl: undefined as string | undefined };
+          }
+        })
+      );
+
+      setDigitalLibrary((prev) =>
+        prev.map((item) => {
+          const patch = fetched.find((f) => f.id === item.bookId);
+          if (!patch || !patch.pdfUrl || item.pdfUrl) return item;
+          return { ...item, pdfUrl: patch.pdfUrl };
+        })
+      );
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const handleDeleteAccount = async () => {
     if (deleteConfirm !== 'SUPPRIMER') {
       toast.error('Veuillez taper SUPPRIMER pour confirmer.');
@@ -537,6 +692,12 @@ export const ProfilePage: React.FC = () => {
                 className="flex-1 min-w-[120px] rounded-full px-4 py-2 text-sm font-medium text-slate-700 border border-transparent transition-all duration-200 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:border data-[state=active]:border-slate-200 data-[state=active]:shadow-md data-[state=active]:translate-y-[-1px]"
               >
                 Locations
+              </TabsTrigger>
+              <TabsTrigger
+                value="library"
+                className="flex-1 min-w-[120px] rounded-full px-4 py-2 text-sm font-medium text-slate-700 border border-transparent transition-all duration-200 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:border data-[state=active]:border-slate-200 data-[state=active]:shadow-md data-[state=active]:translate-y-[-1px]"
+              >
+                Mes livres
               </TabsTrigger>
               <TabsTrigger
                 value="orders"
@@ -1022,6 +1183,93 @@ export const ProfilePage: React.FC = () => {
             </Card>
           </TabsContent>
 
+          <TabsContent value="library" className="space-y-6">
+            <Card className="rounded-2xl border border-slate-100 shadow-lg overflow-hidden">
+              <div className="bg-gradient-to-r from-sky-600 via-blue-600 to-emerald-500 px-6 py-4 text-white flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <BookOpen className="h-5 w-5" />
+                    Mes livres numériques
+                  </CardTitle>
+                  <p className="text-sm text-sky-50/90">
+                    Accès limité à la période de location. Lecture intégrée sans impression ni copie.
+                  </p>
+                </div>
+                {pdfLoading && (
+                  <span className="flex items-center gap-2 text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Préparation des fichiers...
+                  </span>
+                )}
+              </div>
+              <CardContent className="space-y-4 bg-gradient-to-br from-slate-50 via-white to-emerald-50">
+                {digitalLibrary.length === 0 ? (
+                  <div className="text-center text-sm text-gray-500 py-10 border border-dashed border-slate-200 rounded-xl bg-white">
+                    Vous n’avez pas encore de livres numériques disponibles.
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {digitalLibrary.map((item) => {
+                      const badgeClass = item.isRental
+                        ? item.expired
+                          ? 'bg-red-100 text-red-700'
+                          : item.daysLeft <= 3
+                            ? 'bg-orange-100 text-orange-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                        : 'bg-emerald-100 text-emerald-700';
+                      return (
+                        <div
+                          key={item.id}
+                          className="rounded-xl border border-slate-200 p-4 flex gap-4 bg-white shadow-md hover:shadow-lg transition-shadow duration-200"
+                        >
+                          <div className="w-16 h-20 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0 ring-1 ring-slate-200">
+                            {item.image ? (
+                              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">
+                                PDF
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <div>
+                              <p className="font-semibold text-slate-900">{item.title}</p>
+                              <p className="text-sm text-slate-500">{item.author}</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <Badge className={badgeClass}>{item.statusLabel}</Badge>
+                              <Badge variant="outline" className="text-xs text-slate-600 border-blue-200 text-blue-700">
+                                {item.isRental ? 'Location' : 'Achat numérique'}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {item.isRental && item.endAt
+                                ? `Accès jusqu’au ${formatDate(item.endAt)}`
+                                : 'Accès permanent'}
+                            </p>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenPdf(item)}
+                                disabled={(item.isRental && item.expired) || !item.pdfUrl}
+                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                              >
+                                Lire
+                              </Button>
+                              <Badge variant="outline" className="text-xs text-slate-600">
+                                Impression/Copie verrouillées
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="orders">
             <Card className="rounded-2xl border border-slate-100 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between">
@@ -1176,6 +1424,7 @@ export const ProfilePage: React.FC = () => {
         </Tabs>
       </div>
     </div>
+    {/* Viewer modal retiré : ouverture dans un nouvel onglet */}
   </main>
   );
 };

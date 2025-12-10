@@ -4,11 +4,26 @@ import { Trash2, Plus, Minus, ShoppingBag, ArrowRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useCart } from '../contexts/CartContext';
 
+const RENTAL_MULTIPLIERS: Record<number, number> = {
+  7: 1,
+  14: 1.8,
+  30: 3,
+};
+
 const formatCurrency = (value: number = 0) =>
   new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(value);
+const formatRentalPrice = (base: number, duration: number) =>
+  formatCurrency(base * (RENTAL_MULTIPLIERS[duration] ?? 1));
 
 export const Cart: React.FC = () => {
-  const { cart, removeFromCart, updateQuantity, totalItems, totalPrice } = useCart();
+  const {
+    cart,
+    removeFromCart,
+    updateQuantity,
+    updateRentalDuration,
+    totalItems,
+    totalPrice,
+  } = useCart();
   const navigate = useNavigate();
 
   if (cart.length === 0) {
@@ -39,69 +54,107 @@ export const Cart: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Liste des articles */}
           <div className="lg:col-span-2 space-y-4">
-            {cart.map((item) => (
-              <div key={item.id} className="bg-white rounded-lg shadow-md p-6">
-                <div className="flex gap-4">
-                  {/* Image */}
-                  <div className="w-24 h-32 flex-shrink-0 rounded overflow-hidden bg-gray-100">
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
+            {cart.map((item) => {
+              const isRental = item.type === 'rent';
+              const currentDuration = isRental ? item.rentalDuration || 7 : null;
+              const baseRentPrice = isRental
+                ? item.rentPrice ?? item.price / (RENTAL_MULTIPLIERS[currentDuration || 7] ?? 1)
+                : null;
 
-                  {/* Détails */}
-                  <div className="flex-1">
-                    <div className="flex justify-between mb-2">
-                      <div>
-                        <h3 className="mb-1" style={{ color: '#374151' }}>
-                          {item.title}
-                        </h3>
-                        <p className="text-sm opacity-75" style={{ color: '#374151' }}>
-                          {item.author}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => removeFromCart(item.id)}
-                        className="hover:opacity-80"
-                      >
-                        <Trash2 className="w-5 h-5" style={{ color: '#374151' }} />
-                      </button>
+              return (
+                <div key={item.id} className="bg-white rounded-lg shadow-md p-6">
+                  <div className="flex gap-4">
+                    {/* Image */}
+                    <div className="w-24 h-32 flex-shrink-0 rounded overflow-hidden bg-gray-100">
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
 
-                    <div className="flex items-center justify-between mt-4">
-                      <div className="flex items-center gap-3">
+                    {/* Détails */}
+                    <div className="flex-1">
+                      <div className="flex justify-between mb-2">
+                        <div>
+                          <h3 className="mb-1" style={{ color: '#374151' }}>
+                            {item.title}
+                          </h3>
+                          <p className="text-sm opacity-75" style={{ color: '#374151' }}>
+                            {item.author}
+                          </p>
+                        </div>
                         <button
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="w-8 h-8 rounded-full flex items-center justify-center border"
-                          style={{ borderColor: '#2563EB', color: '#2563EB' }}
+                          onClick={() => removeFromCart(item.id)}
+                          className="hover:opacity-80"
                         >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <span style={{ color: '#374151' }}>{item.quantity}</span>
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="w-8 h-8 rounded-full flex items-center justify-center"
-                          style={{ backgroundColor: '#2563EB', color: '#FFFFFF' }}
-                        >
-                          <Plus className="w-4 h-4" />
+                          <Trash2 className="w-5 h-5" style={{ color: '#374151' }} />
                         </button>
                       </div>
 
-                      <div className="text-right">
-                        <p className="text-sm opacity-75" style={{ color: '#374151' }}>
-                          {item.type === 'rent' ? 'Location' : 'Achat'}
-                        </p>
-                        <p className="text-xl" style={{ color: item.type === 'rent' ? '#10B981' : '#2563EB' }}>
-                          {formatCurrency(item.price * item.quantity)}
-                        </p>
+                      {isRental && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-sm font-medium" style={{ color: '#374151' }}>
+                            Durée de location
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {[7, 14, 30].map((duration) => (
+                              <button
+                                key={duration}
+                                type="button"
+                                onClick={() => updateRentalDuration(item.id, duration)}
+                                className={`px-3 py-1 rounded-full border text-sm transition ${
+                                  currentDuration === duration
+                                    ? 'bg-blue-600 text-white border-blue-600'
+                                    : 'border-blue-200 text-blue-700 hover:border-blue-400'
+                                }`}
+                              >
+                                {duration}j
+                                <span className="block text-[11px] text-emerald-700">
+                                  {formatRentalPrice(baseRentPrice || 0, duration)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between mt-4">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center border"
+                            style={{ borderColor: '#2563EB', color: '#2563EB' }}
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <span style={{ color: '#374151' }}>{item.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: '#2563EB', color: '#FFFFFF' }}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="text-right">
+                          <p className="text-sm opacity-75" style={{ color: '#374151' }}>
+                            {isRental ? `Location · ${currentDuration || 7} j` : 'Achat'}
+                          </p>
+                          <p className="text-xl" style={{ color: isRental ? '#10B981' : '#2563EB' }}>
+                            {formatCurrency(item.price * item.quantity)}
+                          </p>
+                          {isRental && (
+                            <p className="text-xs text-emerald-700">Tarif mis à jour selon la durée</p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Récapitulatif */}

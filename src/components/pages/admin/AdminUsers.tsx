@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../../ui/card";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -37,6 +38,7 @@ interface UserFormData {
 
 export function AdminUsers() {
   const { setCurrentPage } = useApp();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRole, setSelectedRole] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
@@ -86,6 +88,7 @@ export function AdminUsers() {
 
   const handleBackToDashboard = () => {
     setCurrentPage('admin-dashboard');
+    navigate('/admin/dashboard');
   };
 
   const handleBlockUser = async (userId: string) => {

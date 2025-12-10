@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../../ui/card";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -11,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { ArrowLeft, Send, Bell, Users, User, Mail, MessageSquare, Calendar } from "lucide-react";
 import { useApp } from "../../AppContext";
 import { toast } from "sonner@2.0.3";
+import api from "../../../services/api";
 
 interface Notification {
   id: string;
@@ -27,8 +29,10 @@ interface Notification {
 
 export function AdminNotifications() {
   const { setCurrentPage } = useApp();
+  const navigate = useNavigate();
   const [isCreatingNotification, setIsCreatingNotification] = useState(false);
   const [selectedTab, setSelectedTab] = useState('sent');
+  const [sending, setSending] = useState(false);
 
   // Données simulées des notifications
   const [notifications, setNotifications] = useState<Notification[]>([
@@ -83,45 +87,73 @@ export function AdminNotifications() {
     type: "general" as const,
     recipient: "all" as const,
     recipientDetails: "",
-    scheduleDate: ""
+    scheduleDate: "",
+    ctaLabel: "Voir les détails",
+    ctaUrl: ""
   });
 
   const handleBackToDashboard = () => {
     setCurrentPage('admin-dashboard');
+    navigate('/admin/dashboard');
   };
 
-  const handleSendNotification = () => {
+  const handleSendNotification = async () => {
     if (!newNotification.title || !newNotification.message) {
       toast.error("Veuillez remplir le titre et le message");
       return;
     }
 
-    const notification: Notification = {
-      id: Date.now().toString(),
-      title: newNotification.title,
-      message: newNotification.message,
-      type: newNotification.type,
-      recipient: newNotification.recipient,
-      recipientDetails: newNotification.recipientDetails || undefined,
-      dateSent: new Date().toISOString(),
-      status: newNotification.scheduleDate ? "scheduled" : "sent",
-      readCount: 0,
-      totalRecipients: newNotification.recipient === 'all' ? 78 : 
-                      newNotification.recipient === 'users' ? 65 : 1
-    };
+    if (newNotification.recipient === 'specific' && !newNotification.recipientDetails) {
+      toast.error("Merci d'indiquer l'email du destinataire");
+      return;
+    }
 
-    setNotifications([notification, ...notifications]);
-    setNewNotification({
-      title: "",
-      message: "",
-      type: "general",
-      recipient: "all",
-      recipientDetails: "",
-      scheduleDate: ""
-    });
-    setIsCreatingNotification(false);
-    
-    toast.success(newNotification.scheduleDate ? "Notification programmée" : "Notification envoyée avec succès");
+    setSending(true);
+    try {
+      const payload = {
+        title: newNotification.title,
+        message: newNotification.message,
+        type: newNotification.type,
+        recipient: newNotification.recipient,
+        recipientEmail: newNotification.recipient === 'specific' ? newNotification.recipientDetails : undefined,
+        ctaLabel: newNotification.ctaLabel || undefined,
+        ctaUrl: newNotification.ctaUrl || undefined,
+      };
+      const { sent } = await api.admin.sendNotification(payload);
+
+      const notification: Notification = {
+        id: Date.now().toString(),
+        title: newNotification.title,
+        message: newNotification.message,
+        type: newNotification.type,
+        recipient: newNotification.recipient,
+        recipientDetails: newNotification.recipientDetails || undefined,
+        dateSent: new Date().toISOString(),
+        status: newNotification.scheduleDate ? "scheduled" : "sent",
+        readCount: 0,
+        totalRecipients: sent,
+      };
+
+      setNotifications([notification, ...notifications]);
+      setNewNotification({
+        title: "",
+        message: "",
+        type: "general",
+        recipient: "all",
+        recipientDetails: "",
+        scheduleDate: "",
+        ctaLabel: "Voir les détails",
+        ctaUrl: ""
+      });
+      setIsCreatingNotification(false);
+      
+      toast.success(newNotification.scheduleDate ? "Notification programmée" : "Notification envoyée avec succès");
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Envoi impossible. Vérifiez la configuration email.");
+    } finally {
+      setSending(false);
+    }
   };
 
   const getTypeColor = (type: string) => {
@@ -299,6 +331,28 @@ export function AdminNotifications() {
                   </div>
                 )}
 
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="ctaLabel">Texte du bouton (optionnel)</Label>
+                    <Input
+                      id="ctaLabel"
+                      value={newNotification.ctaLabel}
+                      onChange={(e) => setNewNotification({ ...newNotification, ctaLabel: e.target.value })}
+                      placeholder="Ex: Découvrir l'offre"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ctaUrl">Lien du bouton (optionnel)</Label>
+                    <Input
+                      id="ctaUrl"
+                      value={newNotification.ctaUrl}
+                      onChange={(e) => setNewNotification({ ...newNotification, ctaUrl: e.target.value })}
+                      placeholder="https://votre-site.com/offre"
+                      type="url"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="scheduleDate">Programmer l'envoi (optionnel)</Label>
                   <Input
@@ -314,8 +368,8 @@ export function AdminNotifications() {
                 <Button variant="outline" onClick={() => setIsCreatingNotification(false)}>
                   Annuler
                 </Button>
-                <Button onClick={handleSendNotification}>
-                  {newNotification.scheduleDate ? 'Programmer' : 'Envoyer'}
+                <Button onClick={handleSendNotification} disabled={sending}>
+                  {sending ? 'Envoi...' : newNotification.scheduleDate ? 'Programmer' : 'Envoyer'}
                 </Button>
               </div>
             </DialogContent>

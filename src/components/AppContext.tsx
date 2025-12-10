@@ -430,18 +430,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         adminApi.getStats(),
         ordersApi?.getAdminSummary ? ordersApi.getAdminSummary() : Promise.resolve(null),
       ]);
+      const totals = stats?.totals || {};
+      const topProducts = (stats?.topProducts ?? stats?.topLivres ?? []) as any[];
+      const topTitles = topProducts.map((item) => {
+        if (typeof item === 'string') return item;
+        if (!item) return 'Produit';
+        return item.title || item.name || 'Produit';
+      });
       setAdminStats((prev) => ({
         ...prev,
         ...(stats || {}),
-        totalUsers: stats?.totalUsers ?? prev.totalUsers ?? 0,
-        totalBooks: stats?.totalBooks ?? prev.totalBooks ?? 0,
-        totalOrders: orderSummary?.totalOrders ?? stats?.totalOrders ?? prev.totalOrders ?? 0,
-        totalRevenue: orderSummary?.totalAmount ?? stats?.totalRevenue ?? prev.totalRevenue ?? 0,
-        totalVentes: orderSummary?.totalAmount ?? stats?.totalVentes ?? stats?.totalRevenue ?? prev.totalVentes ?? 0,
-        ordersToday: orderSummary?.ordersToday ?? prev.ordersToday ?? 0,
+        totalUsers: totals.users ?? stats?.totalUsers ?? prev.totalUsers ?? 0,
+        totalBooks: totals.books ?? stats?.totalBooks ?? prev.totalBooks ?? 0,
+        totalOrders: totals.orders ?? orderSummary?.totalOrders ?? stats?.totalOrders ?? prev.totalOrders ?? 0,
+        totalRevenue: totals.revenue ?? orderSummary?.totalAmount ?? stats?.totalRevenue ?? prev.totalRevenue ?? 0,
+        totalVentes: totals.revenue ?? orderSummary?.totalAmount ?? stats?.totalVentes ?? stats?.totalRevenue ?? prev.totalVentes ?? 0,
+        ordersToday: stats?.ordersToday ?? orderSummary?.ordersToday ?? prev.ordersToday ?? 0,
         locationsActives: stats?.locationsActives ?? prev.locationsActives ?? 0,
         retards: stats?.retards ?? prev.retards ?? 0,
-        topLivres: stats?.topLivres ?? prev.topLivres ?? [],
+        topLivres: topTitles.length ? topTitles : prev.topLivres ?? [],
         revenueTrend: stats?.revenueTrend ?? stats?.salesData ?? prev.revenueTrend ?? [],
         categoryDistribution: stats?.categoryDistribution ?? stats?.categories ?? prev.categoryDistribution ?? [],
         recentOrders: stats?.recentOrders ?? prev.recentOrders ?? [],

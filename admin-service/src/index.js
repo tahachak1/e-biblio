@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
+const { buildNotificationEmail } = require('./utils/notificationTemplate');
 
 dotenv.config();
 
@@ -20,6 +21,8 @@ const {
   EMAIL_PORT = 587,
   EMAIL_FROM = EMAIL_USER,
   FILE_BASE_URL,
+  FRONT_URL = 'http://localhost:3000',
+  CARRIER_WEBHOOK_SECRET,
 } = process.env;
 
 mongoose.connect(MONGO_URI).then(() => console.log('Admin-service connected to MongoDB')).catch((err) => console.error('Mongo error', err));
@@ -84,10 +87,13 @@ const orderSchema = new mongoose.Schema({
         title: String,
         author: String,
         image: String,
+        price: Number,
+        rentPrice: Number,
       }
     }
   ],
   totalAmount: Number,
+  paymentMethod: { type: String, default: 'stripe' },
   status: { type: String, default: 'pending' },
   shippingAddress: {
     name: String,
@@ -95,6 +101,18 @@ const orderSchema = new mongoose.Schema({
     city: String,
     postalCode: String,
     country: String,
+    email: String,
+  },
+  shippingTracking: {
+    number: String,
+    carrier: { type: String, default: 'eBiblio Logistics' },
+    status: String,
+    eta: Date,
+    history: [{
+      status: String,
+      message: String,
+      updatedAt: { type: Date, default: Date.now }
+    }]
   }
 }, { timestamps: true });
 
@@ -221,6 +239,55 @@ async function sendTemporaryPasswordEmail(to, tempPassword, createdBy) {
   console.log(`[Admin][Email] Sent temp password to ${to}`);
 }
 
+function generateTrackingNumber() {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let out = 'TRK-';
+  for (let i = 0; i < 10; i += 1) {
+    out += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  }
+  return out;
+}
+
+async function collectRecipients(recipient, specificEmail) {
+  if (recipient === 'specific' && specificEmail) {
+    return [specificEmail.trim()];
+  }
+  const query = { email: { $exists: true, $ne: null } };
+  if (recipient === 'users') {
+    query.role = { $ne: 'admin' };
+  }
+  const users = await User.find(query).select('email').lean();
+  const emails = (users || []).map((u) => u.email).filter(Boolean);
+  return Array.from(new Set(emails));
+}
+
+async function sendNotificationEmails({ recipients, subject, title, message, type = 'general', ctaLabel, ctaUrl }) {
+  if (!mailer) {
+    console.warn('[Admin][Email] EMAIL_USER/PASS missing, skipping notification send');
+    return { sent: 0 };
+  }
+  const toList = Array.isArray(recipients) ? recipients.filter(Boolean) : [];
+  if (!toList.length) return { sent: 0 };
+
+  const html = buildNotificationEmail({ title, message, type, ctaLabel, ctaUrl });
+  const text = [
+    title || 'Notification',
+    '',
+    message || '',
+    '',
+    ctaUrl ? `Détail: ${ctaUrl}` : ''
+  ].join('\n');
+
+  // Use bcc to avoid leaking recipient emails when broadcasting
+  const mailOptions = toList.length > 1
+    ? { from: EMAIL_FROM || EMAIL_USER, to: EMAIL_FROM || EMAIL_USER, bcc: toList, subject, html, text }
+    : { from: EMAIL_FROM || EMAIL_USER, to: toList[0], subject, html, text };
+
+  await mailer.sendMail(mailOptions);
+  console.log(`[Admin][Email] Notification sent to ${toList.length} recipient(s)`);
+  return { sent: toList.length };
+}
+
 function slugify(text = '') {
   return text.toString().toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
@@ -229,7 +296,7 @@ app.get('/admin/stats', authRequired, adminRequired, async (req, res) => {
   try {
     const [usersCount, orders, books, categories] = await Promise.all([
       User.countDocuments({}),
-      Order.find({}).sort({ createdAt: 1 }),
+      Order.find({}).sort({ createdAt: 1 }).lean(),
       Book.find({}),
       Category.find({})
     ]);
@@ -294,6 +361,13 @@ app.get('/admin/stats', authRequired, adminRequired, async (req, res) => {
         trendMap[label].total += order.totalAmount || 0;
         trendMap[label].sales += order.totalAmount || 0;
         trendMap[label].orders += 1;
+        (order.items || []).forEach((item) => {
+          const t = (item.type || '').toLowerCase();
+          const isRental = t.includes('loc') || t === 'rent';
+          if (isRental) {
+            trendMap[label].rentals += item.quantity || 1;
+          }
+        });
       }
     });
     const revenueTrend = Object.values(trendMap);
@@ -319,6 +393,26 @@ app.get('/admin/stats', authRequired, adminRequired, async (req, res) => {
       user: order.customer
     }));
 
+    // Locations actives / retards / commandes du jour
+    const nowTs = Date.now();
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let locationsActives = 0;
+    let retards = 0;
+    let ordersToday = 0;
+    orders.forEach((order) => {
+      const createdLabel = order.createdAt?.toISOString().slice(0, 10);
+      if (createdLabel === todayStr) ordersToday += 1;
+      (order.items || []).forEach((item) => {
+        const t = (item.type || '').toLowerCase();
+        const isRental = t.includes('loc') || t === 'rent';
+        if (!isRental) return;
+        const endTs = item.rentalEndAt ? new Date(item.rentalEndAt).getTime() : null;
+        if (!endTs) return;
+        if (endTs >= nowTs) locationsActives += 1;
+        else retards += 1;
+      });
+    });
+
     res.json({
       totals: {
         books: books.length,
@@ -333,7 +427,10 @@ app.get('/admin/stats', authRequired, adminRequired, async (req, res) => {
     categoryDistribution,
     topProducts,
     recentOrders,
-    notifications
+    notifications,
+    locationsActives,
+    retards,
+    ordersToday
     });
   } catch (err) {
     console.error(err);
@@ -518,10 +615,51 @@ app.delete('/books/:id', authRequired, adminRequired, async (req, res) => {
   res.json({ message: 'Livre supprimé' });
 });
 
+app.post('/admin/notifications', authRequired, adminRequired, async (req, res) => {
+  try {
+    const {
+      title,
+      message,
+      type = 'general',
+      recipient = 'users',
+      recipientEmail,
+      ctaLabel,
+      ctaUrl,
+    } = req.body || {};
+
+    if (!title || !message) {
+      return res.status(400).json({ message: 'Titre et message requis' });
+    }
+
+    const recipients = await collectRecipients(recipient, recipientEmail);
+    if (!recipients.length) {
+      return res.status(400).json({ message: 'Aucun destinataire trouvé' });
+    }
+
+    const subject = `[${type.toUpperCase()}] ${title}`;
+    const result = await sendNotificationEmails({
+      recipients,
+      subject,
+      title,
+      message,
+      type,
+      ctaLabel,
+      ctaUrl,
+    });
+
+    return res.json({ sent: result.sent, recipients });
+  } catch (err) {
+    console.error('Failed to send notification', err);
+    res.status(500).json({ message: 'Erreur lors de l’envoi de la notification' });
+  }
+});
+
 // Admin orders
 app.get('/admin/orders', authRequired, adminRequired, async (req, res) => {
   try {
-    const orders = await Order.find({}).sort({ createdAt: -1 });
+    // Utiliser lean() pour renvoyer les articles complets (les documents hydratés
+    // masquaient le champ items).
+    const orders = await Order.find({}).sort({ createdAt: -1 }).lean();
     res.json({ orders });
   } catch (err) {
     console.error(err);
@@ -533,12 +671,90 @@ app.patch('/admin/orders/:id/status', authRequired, adminRequired, async (req, r
   const { status } = req.body;
   if (!status) return res.status(400).json({ message: 'Statut requis' });
   try {
-    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Commande introuvable' });
+
+    const now = new Date();
+    if (status === 'shipped' && !order.shippingTracking?.number) {
+      order.shippingTracking = {
+        number: generateTrackingNumber(),
+        carrier: order.shippingTracking?.carrier || 'eBiblio Logistics',
+        status: 'shipped',
+        eta: order.shippingTracking?.eta || new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
+        history: [
+          ...(order.shippingTracking?.history || []),
+          { status: 'shipped', message: 'Colis expédié', updatedAt: now }
+        ]
+      };
+    } else {
+      order.shippingTracking = order.shippingTracking || {};
+      order.shippingTracking.status = status;
+      order.shippingTracking.history = [
+        ...(order.shippingTracking.history || []),
+        { status, message: `Statut mis à jour: ${status}`, updatedAt: now }
+      ];
+    }
+
+    order.status = status;
+    await order.save();
+
+    const toEmail = order.customerEmail || order.shippingAddress?.email || null;
+    if (toEmail) {
+      const subject = `Mise à jour de votre commande #${order.orderNumber || order._id}`;
+      const title = `Statut mis à jour : ${status}`;
+      const trackingLine = order.shippingTracking?.number ? `\nNuméro de suivi : ${order.shippingTracking.number}\nTransporteur : ${order.shippingTracking.carrier || 'eBiblio Logistics'}` : '';
+      const message = `Bonjour,\n\nVotre commande #${order.orderNumber || order._id} a été mise à jour.\nNouveau statut : ${status}.${trackingLine}\n\nMerci pour votre confiance.\n`;
+      const orderUrl = `${FRONT_URL.replace(/\/$/, '')}/orders/${order._id}`;
+      try {
+        await sendNotificationEmails({
+          recipients: [toEmail],
+          subject,
+          title,
+          message,
+          type: 'general',
+          ctaLabel: 'Suivre ma commande',
+          ctaUrl: orderUrl,
+        });
+      } catch (emailErr) {
+        console.error('Order status email failed', emailErr);
+      }
+    }
+
     res.json(order);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Erreur lors de la mise à jour du statut' });
+  }
+});
+
+app.post('/carrier/webhook', async (req, res) => {
+  if (CARRIER_WEBHOOK_SECRET) {
+    const token = req.headers['x-webhook-secret'];
+    if (token !== CARRIER_WEBHOOK_SECRET) {
+      return res.status(401).json({ message: 'Secret invalide' });
+    }
+  }
+  const { trackingNumber, status, message, eta } = req.body || {};
+  if (!trackingNumber || !status) {
+    return res.status(400).json({ message: 'trackingNumber et status requis' });
+  }
+  try {
+    const order = await Order.findOne({ 'shippingTracking.number': trackingNumber });
+    if (!order) return res.status(404).json({ message: 'Commande introuvable' });
+    const now = new Date();
+    order.status = status;
+    order.shippingTracking = order.shippingTracking || {};
+    order.shippingTracking.status = status;
+    if (eta) order.shippingTracking.eta = new Date(eta);
+    order.shippingTracking.history = [
+      ...(order.shippingTracking.history || []),
+      { status, message: message || `Statut mis à jour: ${status}`, updatedAt: now }
+    ];
+    await order.save();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Carrier webhook update failed', err);
+    res.status(500).json({ message: 'Erreur lors de la mise à jour du suivi' });
   }
 });
 
