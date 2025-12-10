@@ -1,0 +1,22 @@
+# Dependency directories
+node_modules/
+**/node_modules/
+
+# Environment files
+.env
+*.env
+*.env.*
+
+# Build artifacts and logs
+build/
+dist/
+runtime-logs/
+.vscode/
+.DS_Store
+
+# Python caches
+**/__pycache__/
+*.pyc
+
+# OS junk
+Thumbs.db
